@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mainframe Coordinates Lock</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --border: #1e1e2e;
+    --accent: #c8a96e;
+    --accent2: #6e8ec8;
+    --text: #e8e8f0;
+    --muted: #555570;
+    --mono: 'Share Tech Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    overflow-x: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(200,169,110,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(200,169,110,0.03) 1px, transparent 1px);
+    background-size: 60px 60px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── SCREENS ── */
+  .screen { display: none; position: relative; z-index: 1; }
+  .screen.active { display: flex; }
+
+  /* ── HOME SCREEN ── */
+  #screen-home {
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+  }
+  .container {
+    width: 100%; max-width: 680px;
+    padding: 40px 16px 80px;
+  }
+  .header { text-align: center; margin-bottom: 40px; }
+  .header-label {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 4px;
+    color: var(--muted); text-transform: uppercase; margin-bottom: 16px;
+  }
+  .coord-display {
+    font-family: var(--mono); font-size: clamp(24px, 6.5vw, 48px);
+    letter-spacing: 2px; line-height: 1.2; margin-bottom: 8px;
+  }
+  .coord-row {
+    display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 8px;
+    margin-bottom: 12px;
+  }
+  .coord-word {
+    font-family: var(--mono); font-size: clamp(24px, 6.5vw, 48px); color: var(--accent); letter-spacing: 2px;
+    text-transform: uppercase; opacity: 0.6; min-height: 1.5em; line-height: 1.2;
+  }
+  .coord-word.visible { opacity: 1; }
+  .digit { display: inline-block; transition: color 0.4s, text-shadow 0.4s; }
+  .digit.solved { color: var(--accent); text-shadow: 0 0 20px rgba(200,169,110,0.4); }
+  .digit.unsolved { color: var(--muted); }
+  .sep { color: var(--border); }
+  .header-sub {
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+    margin-top: 12px; letter-spacing: 1px; padding: 0 10px;
+  }
+  .progress-bar { height: 1px; background: var(--border); margin: 24px 0; }
+  .progress-fill { height: 100%; background: var(--accent); transition: width 0.5s ease; box-shadow: 0 0 8px rgba(200,169,110,0.5); width: 0%; }
+  .puzzle-grid { display: flex; flex-direction: column; gap: 12px; }
+
+  /* Cards */
+  .puzzle-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 4px; overflow: hidden; transition: border-color 0.3s;
+  }
+  .puzzle-card.solved-card { border-color: rgba(200,169,110,0.4); }
+  .puzzle-header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 16px 16px; cursor: pointer; user-select: none;
+  }
+  .puzzle-num { font-family: var(--mono); font-size: 11px; color: var(--muted); min-width: 20px; }
+  .puzzle-title { flex: 1; font-size: 14px; font-weight: 700; letter-spacing: 0.5px; }
+  .puzzle-tag {
+    font-family: var(--mono); font-size: 9px; letter-spacing: 1px;
+    padding: 3px 6px; border-radius: 2px; text-transform: uppercase;
+  }
+  .tag-video { background: rgba(200,80,80,0.1); color: #e87070; border: 1px solid rgba(200,80,80,0.2); }
+  .puzzle-status { font-family: var(--mono); font-size: 14px; color: var(--muted); min-width: 20px; text-align: right; }
+  .puzzle-status.ok { color: var(--accent); }
+
+  .puzzle-body { padding: 0 16px 20px; border-top: 1px solid var(--border); display: none; }
+  .puzzle-card.open .puzzle-body { display: block; }
+  .puzzle-lore { font-size: 13px; color: #8888aa; line-height: 1.6; margin: 16px 0; font-family: var(--mono); word-break: break-word; }
+
+  /* Video button */
+  .video-btn {
+    display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 12px 18px;
+    background: rgba(200,80,80,0.07); border: 1px solid rgba(200,80,80,0.3); border-radius: 3px; cursor: pointer;
+    font-family: var(--mono); font-size: 12px; letter-spacing: 2px; color: #e87070; text-transform: uppercase; width: 100%; justify-content: center;
+  }
+
+  /* Input & Buttons */
+  .input-row { display: flex; gap: 8px; margin-top: 16px; }
+  .puzzle-input {
+    flex: 1; max-width: 140px; background: var(--bg); border: 1px solid var(--border); border-radius: 3px;
+    color: var(--text); font-family: var(--mono); font-size: 16px; letter-spacing: 2px; padding: 12px; text-align: center; outline: none;
+  }
+  .puzzle-input:focus { border-color: var(--accent); }
+  .puzzle-input.wrong { border-color: #e87070; animation: shake 0.3s; }
+  .puzzle-input.right { border-color: #70e870; background: rgba(112, 232, 112, 0.12); color: var(--text); }
+  
+  .check-btn {
+    background: transparent; border: 1px solid var(--border); color: var(--muted); font-family: var(--mono);
+    font-size: 12px; letter-spacing: 1px; padding: 12px 20px; border-radius: 3px; cursor: pointer; text-transform: uppercase;
+  }
+  .check-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .error-msg { font-family: var(--mono); font-size: 11px; color: #e87070; margin-top: 8px; display: none; }
+  .hint-btn {
+    background: transparent; border: none; color: var(--muted); font-family: var(--mono); font-size: 11px;
+    cursor: pointer; padding: 12px 0 4px; text-decoration: underline; display: block;
+  }
+  .hint-text {
+    font-family: var(--mono); font-size: 12px; color: #666680; margin-top: 8px; display: none; line-height: 1.6;
+    border-left: 2px solid var(--border); padding-left: 12px; word-break: break-word;
+  }
+
+  /* ── SCHIEBEPUZZLE ── */
+  .sliding-puzzle-container {
+    margin: 16px auto 0;
+    width: 100%;
+    max-width: 280px;
+    aspect-ratio: 1 / 1;
+    border: 1px solid var(--border);
+    background: #000;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+    gap: 2px;
+    position: relative;
+  }
+  .tile {
+    background-image: url('Bilder/qrcode_bild.webp');
+    background-size: 300% 300%;
+    cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }
+  .tile.empty { background: transparent !important; cursor: default; border: none; }
+  .puzzle-solved-msg { color: #70e870; font-family: var(--mono); font-size: 13px; margin-top: 16px; text-align: center; display: none; }
+
+  /* ── ZWEI NEUE QR-CODE CONTAINER (REWARDS) ── */
+  .qr-rewards-container {
+    display: none;
+    margin-top: 20px;
+    animation: fadeIn 0.6s ease forwards;
+  }
+  .qr-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    justify-content: center;
+    margin-top: 12px;
+  }
+  .qr-card {
+    background: #07070a;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 12px;
+    text-align: center;
+    flex: 1;
+    min-width: 130px;
+    max-width: 160px;
+  }
+  .qr-card img {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    display: block;
+    border-radius: 2px;
+    margin-bottom: 8px;
+    background: #fff;
+  }
+  .qr-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .label-hint { color: var(--accent); }
+  .label-rick { color: #e87070; }
+
+  /* Maps btn */
+  .maps-btn {
+    display: block; width: 100%; margin-top: 32px; padding: 16px; background: transparent; border: 1px solid var(--accent);
+    border-radius: 4px; color: var(--accent); font-family: var(--mono); font-size: 14px; letter-spacing: 2px; text-align: center;
+    cursor: pointer; text-transform: uppercase; transition: all 0.3s; text-decoration: none; opacity: 0; pointer-events: none; transform: translateY(8px);
+  }
+  .maps-btn.visible { opacity: 1; pointer-events: all; transform: translateY(0); animation: glow-pulse 2s ease-in-out infinite; }
+
+  /* ── VIDEO SCREEN ── */
+  #screen-video { flex-direction: column; align-items: center; min-height: 100vh; padding: 0; }
+  .video-screen-inner { width: 100%; max-width: 780px; padding: 24px 16px 60px; display: flex; flex-direction: column; align-items: flex-start; }
+  .back-btn {
+    display: flex; align-items: center; gap: 8px; background: transparent; border: 1px solid var(--border);
+    color: var(--muted); font-family: var(--mono); font-size: 11px; letter-spacing: 2px; padding: 10px 16px; border-radius: 3px;
+    cursor: pointer; text-transform: uppercase; margin-bottom: 24px; width: 100%; justify-content: center;
+  }
+  
+  .video-puzzle-title { font-size: 20px; font-weight: 800; letter-spacing: 1px; margin-bottom: 6px; }
+  .video-puzzle-source { font-family: var(--mono); font-size: 11px; color: var(--muted); letter-spacing: 2px; margin-bottom: 16px; }
+  .video-puzzle-lore { font-family: var(--mono); font-size: 13px; color: #8888aa; line-height: 1.7; margin-bottom: 20px; border-left: 2px solid var(--border); padding-left: 12px; }
+  
+  .video-wrapper { width: 100%; aspect-ratio: 16/9; background: #000; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; margin-bottom: 20px; position: relative; }
+  .video-wrapper video { width: 100%; height: 100%; object-fit: contain; background: #000; display: none; }
+  .video-wrapper video.active-vid { display: block; }
+  
+  .video-answer-row { display: flex; gap: 8px; align-items: center; width: 100%; }
+  .video-input {
+    flex: 1; max-width: 140px; background: var(--bg); border: 1px solid var(--border); border-radius: 3px; color: var(--text); font-family: var(--mono);
+    font-size: 18px; letter-spacing: 2px; padding: 12px; text-align: center; outline: none;
+  }
+  .video-input:focus { border-color: var(--accent); }
+  .video-input.wrong { border-color: #e87070; animation: shake 0.3s; }
+  .video-input.right { border-color: var(--accent); }
+  .video-check-btn {
+    background: transparent; border: 1px solid var(--accent); color: var(--accent); font-family: var(--mono);
+    font-size: 12px; letter-spacing: 1px; padding: 12px 20px; border-radius: 3px; cursor: pointer; text-transform: uppercase;
+  }
+  .video-error { font-family: var(--mono); font-size: 11px; color: #e87070; margin-top: 10px; display: none; }
+  .video-hint-btn { background: transparent; border: none; color: var(--muted); font-family: var(--mono); font-size: 11px; cursor: pointer; text-decoration: underline; margin-top: 16px; padding: 4px 0; display: block; }
+  .video-hint-text { font-family: var(--mono); font-size: 12px; color: #666680; margin-top: 8px; display: none; line-height: 1.6; border-left: 2px solid var(--border); padding-left: 12px; }
+
+  @keyframes glow-pulse { 0%, 100% { box-shadow: 0 0 10px rgba(200,169,110,0.2); } 50% { box-shadow: 0 0 25px rgba(200,169,110,0.4); } }
+  @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+</style>
+</head>
+<body>
+
+<div id="screen-home" class="screen active">
+  <div class="container">
+    <div class="header">
+      <div class="header-label">Coordinates Locked</div>
+      <div class="coord-row">
+        <div class="coord-display" id="coord-display"></div>
+        <div class="coord-word" id="coord-word"></div>
+      </div>
+      <div class="header-sub">Löse alle Rätsel um den Ort freizuschalten</div>
+    </div>
+    <div class="progress-bar">
+      <div class="progress-fill" id="progress-fill"></div>
+    </div>
+    
+    <div class="puzzle-grid">
+      
+      <div class="puzzle-card" id="card-p_77">
+        <div class="puzzle-header" onclick="toggleCard('p_77')">
+          <span class="puzzle-num">01</span>
+          <span class="puzzle-title">Der Wilde Ritt</span>
+          <span class="puzzle-tag tag-video">Dimma</span>
+          <span class="puzzle-status" id="status-p_77">›</span>
+        </div>
+        <div class="puzzle-body">
+          <div class="puzzle-lore">Barkeeper: Someone you know well Johnny<br><br>he left you this message:<br></div>
+          <button class="video-btn" onclick="openVideo('p_77'); event.stopPropagation();">Video öffnen</button>
+          <div>
+            <div class="input-row">
+              <input class="puzzle-input" id="input-p_77" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="??" maxlength="2" onkeydown="if(event.key==='Enter')checkAnswer('p_77')">
+              <button class="check-btn" onclick="checkAnswer('p_77')">Prüfen</button>
+            </div>
+            <div class="error-msg" id="err-p_77">Falsch. Schau nochmal hin.</div>
+            <button class="hint-btn" id="hintbtn-p_77" onclick="toggleHint('p_77')">[ Hinweis anzeigen ]</button>
+            <div class="hint-text" id="hint-p_77">Really Johnny? you don't get it? When we fought civil war in what stage and what Universe are we in. I can't give you more sorry partner</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="puzzle-card" id="card-p_13">
+        <div class="puzzle-header" onclick="toggleCard('p_13')">
+          <span class="puzzle-num">02</span>
+          <span class="puzzle-title">Virtual Visit</span>
+          <span class="puzzle-tag tag-video">Dimma</span>
+          <span class="puzzle-status" id="status-p_13">›</span>
+        </div>
+        <div class="puzzle-body">
+          <div class="puzzle-lore">Lock in</div>
+          <button class="video-btn" onclick="openVideo('p_13'); event.stopPropagation();">Video öffnen</button>
+          <div>
+            <div class="input-row">
+              <input class="puzzle-input" id="input-p_13" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="??" maxlength="2" onkeydown="if(event.key==='Enter')checkAnswer('p_13')">
+              <button class="check-btn" onclick="checkAnswer('p_13')">Prüfen</button>
+            </div>
+            <div class="error-msg" id="err-p_13">Falsch. Schau nochmal hin.</div>
+            <button class="hint-btn" id="hintbtn-p_13" onclick="toggleHint('p_13')">[ Hinweis anzeigen ]</button>
+            <div class="hint-text" id="hint-p_13">I knew you became senile. BUT you can still do it! just think backwards</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="puzzle-card" id="card-p_52">
+        <div class="puzzle-header" onclick="toggleCard('p_52')">
+          <span class="puzzle-num">03</span>
+          <span class="puzzle-title">The all seeing Eye</span>
+          <span class="puzzle-tag tag-video" style="background:rgba(80,200,80,0.1); color:#70e870; border:1px solid rgba(80,200,80,0.2);">Maxim B</span>
+          <span class="puzzle-status" id="status-p_52">›</span>
+        </div>
+        <div class="puzzle-body">
+          <div class="puzzle-lore">You looked in the Lands Between what did you see my Lord?</div>
+          <div>
+            <div class="input-row">
+              <input class="puzzle-input" id="input-p_52" type="text" placeholder="WORD" maxlength="32" onkeydown="if(event.key==='Enter')checkAnswer('p_52')">
+              <button class="check-btn" onclick="checkAnswer('p_52')">Prüfen</button>
+            </div>
+            <div class="error-msg" id="err-p_52">Falsch. Schau nochmal hin.</div>
+            <button class="hint-btn" id="hintbtn-p_52" onclick="toggleHint('p_52')">[ Hinweis anzeigen ]</button>
+            <div class="hint-text" id="hint-p_52">These structures resemble a hidden keyword, not a letters.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="puzzle-card" id="card-p_extra4">
+        <div class="puzzle-header" onclick="toggleCard('p_extra4')">
+          <span class="puzzle-num">04</span>
+          <span class="puzzle-title">The Awakening of Primal Magic (MAGIEEEE)</span>
+          <span class="puzzle-tag tag-video" style="background:rgba(100,100,150,0.1); color:#9090e8; border:1px solid rgba(100,100,150,0.2);">Daniel</span>
+          <span class="puzzle-status" id="status-p_extra4">›</span>
+        </div>
+        <div class="puzzle-body">
+          <div class="puzzle-lore">Even the smallest flame springs from a spark of ancient knowledge</div>
+          <div>
+            <div class="input-row">
+              <input class="puzzle-input" id="input-p_extra4" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="??" maxlength="32" onkeydown="if(event.key==='Enter')checkAnswer('p_extra4')">
+              <button class="check-btn" onclick="checkAnswer('p_extra4')">Prüfen</button>
+            </div>
+            <div class="error-msg" id="err-p_extra4">Falsch. Schau nochmal hin.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="puzzle-card" id="card-p_extra5">
+        <div class="puzzle-header" onclick="toggleCard('p_extra5')">
+          <span class="puzzle-num">05</span>
+          <span class="puzzle-title">The Paths of Destiny (Gefahr)</span>
+          <span class="puzzle-tag tag-video" style="background:rgba(100,100,150,0.1); color:#9090e8; border:1px solid rgba(100,100,150,0.2);">Daniel</span>
+          <span class="puzzle-status" id="status-p_extra5">›</span>
+        </div>
+        <div class="puzzle-body">
+          <div class="puzzle-lore">The road is long and blood-soaked, yet a true vanguard counts their strides</div>
+          <div>
+            <div class="input-row">
+              <input class="puzzle-input" id="input-p_extra5" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="??" maxlength="32" onkeydown="if(event.key==='Enter')checkAnswer('p_extra5')">
+              <button class="check-btn" onclick="checkAnswer('p_extra5')">Prüfen</button>
+            </div>
+            <div class="error-msg" id="err-p_extra5">Falsch. Schau nochmal hin.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="puzzle-card" id="card-p_extra6">
+        <div class="puzzle-header" onclick="toggleCard('p_extra6')">
+          <span class="puzzle-num">06</span>
+          <span class="puzzle-title">The Mercantile Trade (Geldrätsel)</span>
+          <span class="puzzle-tag tag-video" style="background:rgba(100,100,150,0.1); color:#9090e8; border:1px solid rgba(100,100,150,0.2);">Daniel</span>
+          <span class="puzzle-status" id="status-p_extra6">›</span>
+        </div>
+        <div class="puzzle-body">
+          <div class="puzzle-lore">You know your money's worth you say, then the answer should be obvious, no?</div>
+          <div>
+            <div class="input-row">
+              <input class="puzzle-input" id="input-p_extra6" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="????" maxlength="32" onkeydown="if(event.key==='Enter')checkAnswer('p_extra6')">
+              <button class="check-btn" onclick="checkAnswer('p_extra6')">Prüfen</button>
+            </div>
+            <div class="error-msg" id="err-p_extra6">Falsch. Schau nochmal hin.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="puzzle-card" id="card-p_sliding">
+        <div class="puzzle-header" onclick="toggleCard('p_sliding')">
+          <span class="puzzle-num"></span>
+          <span class="puzzle-title">Hinweis</span>
+          <span class="puzzle-tag tag-video" style="background:rgba(110,142,200,0.1); color:var(--accent2); border:1px solid rgba(110,142,200,0.2);">Dimma & Daniel</span>
+          <span class="puzzle-status" id="status-p_sliding">›</span>
+        </div>
+        <div class="puzzle-body">
+          <div class="puzzle-lore">Bringe die Kacheln in die richtige Reihenfolge. Dieses Schloss ist rein optional und nicht notwendig für das Ende.</div>
+          <div>
+            <button class="hint-btn" id="hintbtn-p_sliding" onclick="toggleSlidingPuzzle(); event.stopPropagation();">[ Gitter anzeigen ]</button>
+            <div class="hint-text" id="hint-p_sliding">
+              <div class="sliding-puzzle-container" id="sliding-puzzle"></div>
+              
+              <div class="qr-rewards-container" id="qr-rewards">
+                <div class="puzzle-solved-msg" style="display:block; margin-top:0;">✓ Daten-Matrix erfolgreich rekonstruiert!</div>
+                <div class="qr-grid">
+                  <div class="qr-card">
+                    <img src="Bilder/qrcode_Bild.webp" alt="QR Code Tipp">
+                    <div class="qr-label label-hint">Blue Pill</div>
+                  </div>
+                  <div class="qr-card">
+                    <img src="Bilder/qrcode_Video.webp" alt="QR Code Rickroll">
+                    <div class="qr-label label-rick">Red Pill</div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+    
+    <a id="maps-btn" class="maps-btn" href="#" target="_blank">↗ Ort öffnen</a>
+  </div>
+</div>
+
+<div id="screen-video" class="screen">
+  <div class="video-screen-inner">
+    <button class="back-btn" onclick="goHome()">← Zurück</button>
+    <div class="video-puzzle-title" id="vp-title"></div>
+    <div class="video-puzzle-source" id="vp-source"></div>
+    <div class="video-puzzle-lore" id="vp-lore"></div>
+    
+    <div class="video-wrapper">
+      <video id="vid-file-p_77" controls preload="auto" playsinline><source src="Video/gyro.mp4" type="video/mp4"></video>
+      <video id="vid-file-p_13" controls preload="auto" playsinline><source src="Video/teto.avi" type="video/mp4"></video>
+    </div>
+    
+    <div class="video-answer-row">
+      <input class="video-input" id="vp-input" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="??" maxlength="2" onkeydown="if(event.key==='Enter') checkVideo()">
+      <button class="video-check-btn" onclick="checkVideo()">Prüfen</button>
+    </div>
+    <div class="video-error" id="vp-error">Falsch. Schau nochmal hin.</div>
+    <button class="video-hint-btn" id="vp-hintbtn" onclick="toggleVideoHint()">[ Hinweis anzeigen ]</button>
+    <div class="video-hint-text" id="vp-hint"></div>
+  </div>
+</div>
+
+<script>
+const TARGET_LAT = "52.5077";
+const TARGET_LNG = "13.3878";
+
+const PUZZLES = {
+  "p_77": { title: "Der Wilde Ritt", source: "Nyo-ho", ans: "77", idx: 3, hint: "I knew you became senile. BUT you can still do it! just think backwards", lore: "Jemand ganz besonderes hat dir eine Nachricht hinterlassen.", required: true },
+  "p_13": { title: "Die erste Schaufel", source: "TETO", ans: "13", idx: 5, hint: "I knew you became senile. BUT you can still do it! just think backwards.", lore: "if you don't have your hearing device:<br><br>The official lore claims I’m thirty-one,<br>a corporate number that’s no longer fun.<br>But to keep my youthful, idol-like glow,<br>I flipped those digits to the status quo!<br>If you reverse the lie that they officially gave,<br>what’s my true teen age that you crave?", required: true },
+  "p_52": { title: "Das verschlüsselte Gemälde", source: "TETO", ans: "elexir", idx: null, word: "ELEXIR", hint: "These structures resemble a hidden keyword, not a letters.", required: true },
+  "p_extra4": { title: "The Mercantile Trade", source: "Daniel", ans: "52", idx: 0, hint: "", lore: "You know your money's worth you say, then the answer should be obvious, no?", required: true },
+  "p_extra5": { title: "The Paths of Destiny", source: "Daniel", ans: "50", idx: 2, hint: "", lore: "The road is long and blood-soaked, yet a true vanguard counts their strides", required: true },
+  "p_extra6": { title: "The Awakening of Primal Magic", source: "Daniel", ans: "3878", idx: 7, hint: "", lore: "Even the smallest flame springs from a spark of ancient knowledge", required: true },
+  "p_sliding": { title: "QR Code Schiebeschloss", source: "Matrix", ans: "SLIDED", idx: null, hint: "", required: false }
+};
+
+const COORD_TEMPLATE = [
+  { chars: "52",   solved: false }, 
+  { chars: ".",    fixed: true   },
+  { chars: "50",   solved: false }, 
+  { chars: "77",   solved: false }, 
+  { chars: " , ",  fixed: true   },
+  { chars: "13",   solved: false }, 
+  { chars: ".",    fixed: true   },
+  { chars: "38",   solved: false }, 
+  { chars: "78",   solved: false }, 
+];
+
+let solvedSegments = {};
+let solvedPuzzles = {};
+let currentPuzzleId = null;
+
+let puzzleState = [0, 1, 2, 3, 4, 5, 6, 7, 8]; 
+let puzzleSolved = false;
+let puzzleInitialized = false;
+
+function initSlidingPuzzle() {
+  if (puzzleInitialized) return;
+  do {
+    puzzleState.sort(() => Math.random() - 0.5);
+  } while (!isSolvable(puzzleState) || isAlreadySolved(puzzleState));
+  renderPuzzle();
+  puzzleInitialized = true;
+}
+
+function isSolvable(arr) {
+  let inversions = 0;
+  for (let i = 0; i < arr.length; i++) {
+    for (let j = i + 1; j < arr.length; j++) {
+      if (arr[i] !== 8 && arr[j] !== 8 && arr[i] > arr[j]) inversions++;
+    }
+  }
+  return inversions % 2 === 0;
+}
+
+function isAlreadySolved(arr) {
+  return arr.every((val, index) => val === index);
+}
+
+function renderPuzzle() {
+  const container = document.getElementById('sliding-puzzle');
+  if(!container) return;
+  container.innerHTML = '';
+  
+  puzzleState.forEach((tileIdx, currentPos) => {
+    const tile = document.createElement('div');
+    if (tileIdx === 8) {
+      tile.className = 'tile empty';
+    } else {
+      tile.className = 'tile';
+      const xPercent = (tileIdx % 3) * 50;
+      const yPercent = Math.floor(tileIdx / 3) * 50;
+      tile.style.backgroundPosition = `${xPercent}% ${yPercent}%`;
+      if (!puzzleSolved) {
+        tile.onclick = () => tryMoveTile(currentPos);
+      }
+    }
+    container.appendChild(tile);
+  });
+}
+
+function tryMoveTile(pos) {
+  if (puzzleSolved) return;
+  const emptyPos = puzzleState.indexOf(8);
+  const validMoves = [];
+  if (pos % 3 > 0) validMoves.push(pos - 1);
+  if (pos % 3 < 2) validMoves.push(pos + 1);
+  if (pos > 2) validMoves.push(pos - 3);
+  if (pos < 6) validMoves.push(pos + 3);
+
+  if (validMoves.includes(emptyPos)) {
+    puzzleState[emptyPos] = puzzleState[pos];
+    puzzleState[pos] = 8;
+    renderPuzzle();
+    checkPuzzleWin();
+  }
+}
+
+function checkPuzzleWin() {
+  if (isAlreadySolved(puzzleState)) {
+    puzzleSolved = true;
+    
+    // Spielfeld unsichtbar machen
+    document.getElementById('sliding-puzzle').style.display = 'none';
+    
+    // Beide Belohnungs-QR-Codes anzeigen
+    document.getElementById('qr-rewards').style.display = 'block';
+    
+    applySolved('p_sliding');
+  }
+}
+
+function toggleSlidingPuzzle() {
+  const ht = document.getElementById('hint-p_sliding');
+  const btn = document.getElementById('hintbtn-p_sliding');
+  const shown = ht.style.display === 'block';
+  if (!shown) {
+    ht.style.display = 'block';
+    btn.textContent = '[ Schloss verbergen ]';
+    initSlidingPuzzle();
+  } else {
+    ht.style.display = 'none';
+    btn.textContent = '[ Schloss anzeigen ]';
+  }
+}
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  window.scrollTo(0,0);
+}
+
+function goHome() {
+  document.querySelectorAll('.video-wrapper video').forEach(v => {
+    v.pause();
+    v.classList.remove('active-vid');
+  });
+  showScreen('screen-home');
+}
+
+function openVideo(id) {
+  const p = PUZZLES[id];
+  currentPuzzleId = id;
+
+  document.getElementById('vp-title').textContent = p.title;
+  document.getElementById('vp-source').textContent = p.source;
+  document.getElementById('vp-lore').innerHTML = p.lore;
+  document.getElementById('vp-hint').textContent = p.hint;
+  document.getElementById('vp-hint').style.display = 'none';
+  document.getElementById('vp-hintbtn').textContent = '[ Hinweis anzeigen ]';
+  document.getElementById('vp-error').style.display = 'none';
+
+  const input = document.getElementById('vp-input');
+  input.value = '';
+  input.disabled = solvedSegments[p.idx] || false;
+  input.className = 'video-input' + (solvedSegments[p.idx] ? ' right' : '');
+
+  document.querySelectorAll('.video-wrapper video').forEach(v => v.classList.remove('active-vid'));
+  const targetVid = document.getElementById('vid-file-' + id);
+  if(targetVid) {
+    targetVid.classList.add('active-vid');
+    targetVid.play().catch(() => {});
+  }
+
+  showScreen('screen-video');
+}
+
+function checkVideo() {
+  if (!currentPuzzleId) return;
+  const p = PUZZLES[currentPuzzleId];
+  const input = document.getElementById('vp-input');
+  const err = document.getElementById('vp-error');
+
+  if (input.value.trim() === p.ans) {
+    input.classList.remove('wrong'); input.classList.add('right'); input.disabled = true;
+    err.style.display = 'none';
+    applySolved(currentPuzzleId);
+  } else {
+    input.classList.add('wrong'); err.style.display = 'block';
+    setTimeout(() => input.classList.remove('wrong'), 400);
+  }
+}
+
+function checkAnswer(id) {
+  const p = PUZZLES[id];
+  const input = document.getElementById('input-' + id);
+  const err = document.getElementById('err-' + id);
+
+  const answer = input.value.trim();
+  const expected = String(p.ans).trim();
+  if (answer.toLowerCase() === expected.toLowerCase()) {
+    input.classList.remove('wrong'); input.classList.add('right'); input.disabled = true;
+    err.style.display = 'none';
+    applySolved(id);
+  } else {
+    input.classList.add('wrong'); err.style.display = 'block';
+    setTimeout(() => input.classList.remove('wrong'), 400);
+  }
+}
+
+function applySolved(id) {
+  const p = PUZZLES[id];
+  if (p.idx != null) {
+    solvedSegments[p.idx] = true;
+    if (p.idx === 7) {
+      solvedSegments[8] = true;
+    }
+  }
+  solvedPuzzles[id] = true;
+  
+  document.getElementById('card-' + id).classList.add('solved-card');
+  const st = document.getElementById('status-' + id);
+  if (st) { st.textContent = '✓'; st.classList.add('ok'); }
+  
+  const mainInput = document.getElementById('input-' + id);
+  if(mainInput) { mainInput.classList.add('right'); mainInput.disabled = true; mainInput.value = p.ans; }
+
+  const vid = document.getElementById('vid-file-' + id);
+  if(vid) vid.pause();
+
+  updateCoordDisplay();
+  updateWordDisplay();
+  updateProgress();
+}
+
+function toggleCard(id) { document.getElementById('card-' + id).classList.toggle('open'); }
+function toggleHint(id) {
+  const ht = document.getElementById('hint-' + id);
+  const btn = document.getElementById('hintbtn-' + id);
+  const shown = ht.style.display === 'block';
+  ht.style.display = shown ? 'none' : 'block';
+  btn.textContent = shown ? '[ Hinweis anzeigen ]' : '[ Hinweis verbergen ]';
+}
+function toggleVideoHint() {
+  const ht = document.getElementById('vp-hint');
+  const btn = document.getElementById('vp-hintbtn');
+  const shown = ht.style.display === 'block';
+  ht.style.display = shown ? 'none' : 'block';
+  btn.textContent = shown ? '[ Hinweis anzeigen ]' : '[ Hinweis verbergen ]';
+}
+
+function updateCoordDisplay() {
+  document.getElementById('coord-display').innerHTML = COORD_TEMPLATE.map((seg, i) => {
+    if (seg.fixed) return `<span class="sep">${seg.chars}</span>`;
+    return `<span class="digit ${solvedSegments[i] ? 'solved' : 'unsolved'}">${solvedSegments[i] ? seg.chars : 'XX'}</span>`;
+  }).join('');
+}
+
+function updateWordDisplay() {
+  const el = document.getElementById('coord-word');
+  const puzzle = PUZZLES['p_52'];
+  if (puzzle && puzzle.word && solvedPuzzles['p_52']) {
+    el.textContent = puzzle.word;
+    el.classList.add('visible');
+  } else {
+    el.textContent = '';
+    el.classList.remove('visible');
+  }
+}
+
+function updateProgress() {
+  const reqKeys = Object.keys(PUZZLES).filter(k => PUZZLES[k].required);
+  const totalRequired = reqKeys.length;
+  
+  let doneRequired = 0;
+  reqKeys.forEach(k => { if (solvedPuzzles[k]) doneRequired++; });
+  
+  document.getElementById('progress-fill').style.width = (doneRequired / totalRequired * 100) + '%';
+  
+  if (doneRequired === totalRequired) {
+    const btn = document.getElementById('maps-btn');
+    btn.href = `https://www.google.com/maps/place/${TARGET_LAT},${TARGET_LNG}`;
+    btn.classList.add('visible');
+  }
+}
+
+updateCoordDisplay();
+updateWordDisplay();
+</script>
+</body>
+</html>
