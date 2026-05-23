@@ -402,16 +402,7 @@
               
               <div class="qr-rewards-container" id="qr-rewards">
                 <div class="puzzle-solved-msg" style="display:block; margin-top:0;">✓ Daten-Matrix erfolgreich rekonstruiert!</div>
-                <div class="qr-grid">
-                  <div class="qr-card">
-                    <img src="Bilder/qrcode_Bild.png" alt="nt">
-                    <div class="qr-label label-hint">Blue Pill</div>
-                  </div>
-                  <div class="qr-card">
-                    <img src="Bilder/qrcode_Video.png" alt="nt">
-                    <div class="qr-label label-rick">Red Pill</div>
-                  </div>
-                </div>
+                <div class="qr-grid" id="qr-grid"></div>
               </div>
 
             </div>
@@ -549,6 +540,20 @@ function checkPuzzleWin() {
     
     // Spielfeld unsichtbar machen
     document.getElementById('sliding-puzzle').style.display = 'none';
+
+    // QR-Karten in zufälliger Reihenfolge befüllen
+    const cards = [
+      { src: 'Bilder/qrcode_Bild.png', label: 'Blue Pill', cls: 'label-hint' },
+      { src: 'Bilder/qrcode_Video.png', label: 'Red Pill',  cls: 'label-rick' }
+    ];
+    if (Math.random() < 0.5) cards.reverse();
+    const grid = document.getElementById('qr-grid');
+    grid.innerHTML = cards.map(c =>
+      `<div class="qr-card">
+        <img src="${c.src}" alt="nt">
+        <div class="qr-label ${c.cls}">${c.label}</div>
+      </div>`
+    ).join('');
     
     // Beide Belohnungs-QR-Codes anzeigen
     document.getElementById('qr-rewards').style.display = 'block';
